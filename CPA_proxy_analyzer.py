@@ -11,13 +11,13 @@ from typing import List, Dict, Optional, Tuple
 import os
 import shutil
 
-# Banner 3 huruf "CPA" dengan posisi responsif di tengah
+# Banner 3 huruf "CPA" tanpa frame - hanya huruf CPA warna magenta
 def get_centered_banner():
-    """Menghasilkan banner CPA yang selalu terpusat di tengah layar"""
+    """Menghasilkan banner CPA tanpa frame yang selalu terpusat di tengah layar"""
     # Dapatkan lebar terminal saat ini
     terminal_width = shutil.get_terminal_size().columns
     
-    # Banner lines (tanpa padding)
+    # Banner lines (hanya huruf CPA, tanpa frame)
     banner_lines = [
         "",
         "     ██████╗ ██████╗  █████╗     ",
@@ -27,57 +27,21 @@ def get_centered_banner():
         "    ╚██████╗ ██║     ██║  ██║    ",
         "     ╚═════╝ ╚═╝     ╚═╝  ╚═╝    ",
         "                                  ",
-        "       CYBER PEOPLE ATTACK       ",
-        "           ELANG  TOOL v1.0       ",
+        "       CPA PROXY ANALYZER       ",
+        "           ELANG TOOL v1.0          ",
         ""
     ]
     
-    # Frame lines
-    frame_top = "╔══════════════════════════════════════════════════════════════╗"
-    frame_bottom = "╚══════════════════════════════════════════════════════════════╝"
-    
-    # Hitung padding untuk setiap baris agar berada di tengah
+    # Pusatkan setiap baris banner
     centered_banner = []
-    
-    # Tambahkan frame atas yang terpusat
-    if terminal_width > len(frame_top):
-        padding = (terminal_width - len(frame_top)) // 2
-        centered_banner.append(" " * padding + frame_top)
-    else:
-        centered_banner.append(frame_top)
-    
-    # Tambahkan baris kosong
-    empty_line = "║" + " " * 62 + "║"
-    if terminal_width > len(empty_line):
-        padding = (terminal_width - len(empty_line)) // 2
-        centered_banner.append(" " * padding + empty_line)
-    
-    # Tambahkan setiap baris banner dengan warna magenta
     for line in banner_lines:
-        # Buat baris dengan frame
-        framed_line = "║" + line.ljust(62) + "║"
-        
-        # Tambahkan warna magenta
-        colored_line = f"\033[95m{framed_line}\033[0m"
-        
-        # Pusatkan di terminal
-        if terminal_width > len(framed_line):
-            padding = (terminal_width - len(framed_line)) // 2
-            centered_banner.append(" " * padding + colored_line)
+        # Hitung padding agar berada di tengah
+        if terminal_width > len(line):
+            padding = (terminal_width - len(line)) // 2
+            centered_line = " " * padding + f"\033[95m{line}\033[0m"
         else:
-            centered_banner.append(colored_line)
-    
-    # Tambahkan baris kosong
-    if terminal_width > len(empty_line):
-        padding = (terminal_width - len(empty_line)) // 2
-        centered_banner.append(" " * padding + empty_line)
-    
-    # Tambahkan frame bawah yang terpusat
-    if terminal_width > len(frame_bottom):
-        padding = (terminal_width - len(frame_bottom)) // 2
-        centered_banner.append(" " * padding + frame_bottom)
-    else:
-        centered_banner.append(frame_bottom)
+            centered_line = f"\033[95m{line}\033[0m"
+        centered_banner.append(centered_line)
     
     return "\n".join(centered_banner)
 
@@ -228,23 +192,19 @@ class Dashboard:
         """Menampilkan dashboard dengan posisi responsif"""
         os.system('clear' if os.name == 'posix' else 'cls')
         
-        # Tampilkan banner CPA yang terpusat
+        # Tampilkan banner CPA tanpa frame yang terpusat
         print(get_centered_banner())
         print()  # Tambahkan baris kosong
         
         # Dapatkan lebar terminal
         terminal_width = shutil.get_terminal_size().columns
         
-        # Lebar konten dashboard
-        dashboard_width = min(70, terminal_width - 4)
-        horizontal_line = "═" * dashboard_width
-        
         # Header dashboard
         header = "📊 LIVE DASHBOARD 📊"
-        print(f"\033[95m{' ' * ((terminal_width - len(header)) // 2)}{header}\033[0m")
+        print(f"\033[96m{' ' * ((terminal_width - len(header)) // 2)}{header}\033[0m")
         print()
         
-        # Statistics dengan posisi terpusat
+        # Statistics
         elapsed = time.time() - self.stats['start_time']
         req_per_sec = self.stats['total_requests'] / elapsed if elapsed > 0 else 0
         success_rate = (self.stats['successful_requests'] / self.stats['total_requests'] * 100 
@@ -252,28 +212,31 @@ class Dashboard:
         avg_latency = (self.stats['total_latency'] / self.stats['total_requests'] 
                       if self.stats['total_requests'] > 0 else 0)
         
-        # Buat box statistik yang terpusat
-        stats_box = [
-            f"╔{horizontal_line}╗",
-            f"║ \033[1;37mTarget:\033[0m {self.target:<{dashboard_width-8}} ║",
-            f"║ \033[1;37mAlive Proxies:\033[0m {self.proxy_pool.get_alive_count():<{dashboard_width-18}} ║",
-            f"║ \033[1;37mTotal Requests:\033[0m {self.stats['total_requests']:<{dashboard_width-18}} ║",
-            f"║ \033[1;37mReq/s:\033[0m {req_per_sec:.2f}{' ' * (dashboard_width-12)} ║",
-            f"║ \033[1;37mSuccess Rate:\033[0m {success_rate:.1f}%{' ' * (dashboard_width-19)} ║",
-            f"║ \033[1;37mAvg Latency:\033[0m {avg_latency*1000:.1f}ms{' ' * (dashboard_width-19)} ║",
-            f"╚{horizontal_line}╝"
+        # Data statistik dalam format rapi
+        stats_data = [
+            f"╔══════════════════════════════════════════════════════════════╗",
+            f"║ \033[1;37mTarget:\033[0m {self.target:<55} ║",
+            f"║ \033[1;37mAlive Proxies:\033[0m {self.proxy_pool.get_alive_count():<55} ║",
+            f"║ \033[1;37mTotal Requests:\033[0m {self.stats['total_requests']:<55} ║",
+            f"║ \033[1;37mReq/s:\033[0m {req_per_sec:.2f}{' ' * 49} ║",
+            f"║ \033[1;37mSuccess Rate:\033[0m {success_rate:.1f}%{' ' * 49} ║",
+            f"║ \033[1;37mAvg Latency:\033[0m {avg_latency*1000:.1f}ms{' ' * 49} ║",
+            f"╚══════════════════════════════════════════════════════════════╝"
         ]
         
-        # Tampilkan statistik box dengan posisi terpusat
-        for line in stats_box:
-            padding = (terminal_width - len(line)) // 2
-            print(" " * padding + f"\033[95m{line}\033[0m")
+        # Tampilkan statistik dengan posisi terpusat
+        for line in stats_data:
+            if terminal_width > len(line):
+                padding = (terminal_width - len(line)) // 2
+                print(" " * padding + line)
+            else:
+                print(line)
         
         print()
         
         # Recent logs
         log_header = "📝 RECENT REQUESTS"
-        print(f"\033[95m{' ' * ((terminal_width - len(log_header)) // 2)}{log_header}\033[0m")
+        print(f"\033[96m{' ' * ((terminal_width - len(log_header)) // 2)}{log_header}\033[0m")
         print()
         
         with self.lock:
@@ -286,23 +249,36 @@ class Dashboard:
                 elif log['status'] == 429:
                     color = "\033[33m"
                 
-                log_text = f"[{log['status']}] {log['method']} | {log['latency']*1000:.0f}ms"
-                log_line = f"║ {color}{log_text:<{dashboard_width-4}}\033[0m ║"
-                padding = (terminal_width - len(log_line)) // 2
-                print(" " * padding + f"\033[95m{log_line}\033[0m")
+                log_text = f"  {color}[{log['status']}]{reset} {log['method']} | {log['latency']*1000:.0f}ms"
+                reset = "\033[0m"
+                # Buat baris dengan frame
+                log_line = f"║{log_text:<64}║"
+                
+                if terminal_width > len(log_line):
+                    padding = (terminal_width - len(log_line)) // 2
+                    print(" " * padding + log_line)
+                else:
+                    print(log_line)
         
         print()
         
         # Info logs
         info_header = "ℹ️  SYSTEM INFO"
-        print(f"\033[95m{' ' * ((terminal_width - len(info_header)) // 2)}{info_header}\033[0m")
+        print(f"\033[96m{' ' * ((terminal_width - len(info_header)) // 2)}{info_header}\033[0m")
         print()
         
         with self.lock:
             for log in self.info_logs:
-                info_line = f"║ \033[33m{log['message']:<{dashboard_width-4}}\033[0m ║"
-                padding = (terminal_width - len(info_line)) // 2
-                print(" " * padding + f"\033[95m{info_line}\033[0m")
+                info_line = f"║ \033[33m{log['message']:<62}\033[0m ║"
+                if terminal_width > len(info_line):
+                    padding = (terminal_width - len(info_line)) // 2
+                    print(" " * padding + info_line)
+                else:
+                    print(info_line)
+        
+        print()
+        footer = "Press Ctrl+C to stop"
+        print(f"\033[90m{' ' * ((terminal_width - len(footer)) // 2)}{footer}\033[0m")
         
         # Save good proxies periodically
         self.save_good_proxies()
