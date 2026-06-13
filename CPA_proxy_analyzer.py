@@ -11,13 +11,48 @@ from typing import List, Dict, Optional, Tuple
 import os
 import shutil
 
-# Banner 3 huruf "CPA" tanpa frame - hanya huruf CPA warna magenta
-def get_centered_banner():
-    """Menghasilkan banner CPA tanpa frame yang selalu terpusat di tengah layar"""
-    # Dapatkan lebar terminal saat ini
-    terminal_width = shutil.get_terminal_size().columns
+# ============================================
+# PROXY LIST - LANGSUNG DI DALAM SCRIPT
+# ============================================
+PROXY_LIST = [
+    "103.152.232.36:80",
+    "47.91.99.55:3128", 
+    "183.88.104.229:8080",
+    "192.252.222.92:4145",
+    "45.86.221.115:8080",
+    "115.78.131.186:8080",
+    "190.14.249.147:999",
+    "189.240.60.170:9090",
+    "177.74.112.77:8080",
+    "200.54.193.147:8080",
+    # Tambahkan proxy lainnya di sini
+]
+
+# ============================================
+# ATAU BISA JUGA PAKAI FORMAT TEXT BLOCK
+# ============================================
+PROXY_TEXT = """
+103.152.232.36:80
+47.91.99.55:3128
+183.88.104.229:8080
+192.252.222.92:4145
+45.86.221.115:8080
+115.78.131.186:8080
+190.14.249.147:999
+189.240.60.170:9090
+"""
+
+# Fungsi untuk mendapatkan proxy dari embedded list
+def get_proxies():
+    # Opsi 1: Dari LIST
+    return PROXY_LIST.copy()
     
-    # Banner lines (hanya huruf CPA, tanpa frame)
+    # Opsi 2: Dari TEXT BLOCK
+    # return [p.strip() for p in PROXY_TEXT.strip().split('\n') if p.strip()]
+
+# Banner 3 huruf "CPA" tanpa frame
+def get_centered_banner():
+    terminal_width = shutil.get_terminal_size().columns
     banner_lines = [
         "",
         "     ██████╗ ██████╗  █████╗     ",
@@ -28,14 +63,12 @@ def get_centered_banner():
         "     ╚═════╝ ╚═╝     ╚═╝  ╚═╝    ",
         "                                  ",
         "       CPA PROXY ANALYZER       ",
-        "           ELANG TOOL v1.0          ",
+        "          ELANG TOOLS v1.0          ",
         ""
     ]
     
-    # Pusatkan setiap baris banner
     centered_banner = []
     for line in banner_lines:
-        # Hitung padding agar berada di tengah
         if terminal_width > len(line):
             padding = (terminal_width - len(line)) // 2
             centered_line = " " * padding + f"\033[95m{line}\033[0m"
@@ -45,7 +78,10 @@ def get_centered_banner():
     
     return "\n".join(centered_banner)
 
-# Model 1: ProxyPool dengan pengelolaan dinamis
+# ============================================
+# LANJUTAN MODEL-MODEL SEBELUMNYA
+# ============================================
+
 class ProxyPool:
     def __init__(self, proxies: List[str]):
         self.proxies = proxies
@@ -54,18 +90,14 @@ class ProxyPool:
         self.lock = threading.Lock()
     
     def get_best_proxy(self) -> Optional[str]:
-        """Mengambil proxy tercepat yang tersedia"""
         with self.lock:
             available = [p for p in self.proxies if p not in self.failed_proxies]
             if not available:
                 return None
-            
-            # Pilih proxy tercepat berdasarkan history
             best = min(available, key=lambda p: self.proxy_speeds[p])
             return best
     
     def report_result(self, proxy: str, success: bool, latency: float):
-        """Melaporkan hasil penggunaan proxy"""
         with self.lock:
             if success:
                 self.proxy_speeds[proxy] = min(self.proxy_speeds[proxy], latency)
@@ -74,14 +106,12 @@ class ProxyPool:
             else:
                 self.failed_proxies.add(proxy)
                 if len(self.failed_proxies) > len(self.proxies) * 0.5:
-                    # Reset jika terlalu banyak gagal
                     self.failed_proxies.clear()
     
     def get_alive_count(self) -> int:
         with self.lock:
             return len([p for p in self.proxies if p not in self.failed_proxies])
 
-# Model 2: RequestWorker dengan load balancing
 class RequestWorker:
     def __init__(self, worker_id: int, proxy_pool: ProxyPool, target: str):
         self.worker_id = worker_id
@@ -92,7 +122,6 @@ class RequestWorker:
         self.latencies = deque(maxlen=100)
         
     async def make_request(self, session: aiohttp.ClientSession, proxy: str) -> Tuple[bool, float, int]:
-        """Melakukan request HTTP dengan proxy"""
         start_time = time.time()
         methods = ['GET', 'POST', 'HEAD']
         method = random.choice(methods)
@@ -124,7 +153,6 @@ class RequestWorker:
             return False, latency, 0
     
     async def run(self, stats: Dict, stop_event: threading.Event):
-        """Worker utama untuk menjalankan request"""
         connector = aiohttp.TCPConnector(limit=100, limit_per_host=10)
         async with aiohttp.ClientSession(connector=connector) as session:
             while not stop_event.is_set():
@@ -137,16 +165,13 @@ class RequestWorker:
                 self.proxy_pool.report_result(proxy, success, latency)
                 self.request_count += 1
                 
-                # Update statistics
                 stats['total_requests'] += 1
                 if success:
                     stats['successful_requests'] += 1
                 stats['total_latency'] += latency
                 
-                # Rate limiting
                 await asyncio.sleep(random.uniform(0.3, 0.8))
 
-# Model 3: Dashboard dengan live monitoring responsif
 class Dashboard:
     def __init__(self, target: str, proxy_pool: ProxyPool):
         self.target = target
@@ -162,7 +187,6 @@ class Dashboard:
         self.lock = threading.Lock()
         
     def add_log(self, status: int, method: str, latency: float):
-        """Menambahkan log request"""
         with self.lock:
             self.logs.appendleft({
                 'status': status,
@@ -172,39 +196,23 @@ class Dashboard:
             })
     
     def add_info(self, message: str):
-        """Menambahkan info log"""
         with self.lock:
             self.info_logs.appendleft({
                 'message': message,
                 'time': datetime.now()
             })
     
-    def center_text(self, text: str, width: int) -> str:
-        """Memusatkan teks dengan padding yang tepat"""
-        if len(text) >= width:
-            return text
-        total_padding = width - len(text)
-        left_padding = total_padding // 2
-        right_padding = total_padding - left_padding
-        return " " * left_padding + text + " " * right_padding
-    
     def display(self):
-        """Menampilkan dashboard dengan posisi responsif"""
         os.system('clear' if os.name == 'posix' else 'cls')
-        
-        # Tampilkan banner CPA tanpa frame yang terpusat
         print(get_centered_banner())
-        print()  # Tambahkan baris kosong
+        print()
         
-        # Dapatkan lebar terminal
         terminal_width = shutil.get_terminal_size().columns
         
-        # Header dashboard
         header = "📊 LIVE DASHBOARD 📊"
         print(f"\033[96m{' ' * ((terminal_width - len(header)) // 2)}{header}\033[0m")
         print()
         
-        # Statistics
         elapsed = time.time() - self.stats['start_time']
         req_per_sec = self.stats['total_requests'] / elapsed if elapsed > 0 else 0
         success_rate = (self.stats['successful_requests'] / self.stats['total_requests'] * 100 
@@ -212,7 +220,6 @@ class Dashboard:
         avg_latency = (self.stats['total_latency'] / self.stats['total_requests'] 
                       if self.stats['total_requests'] > 0 else 0)
         
-        # Data statistik dalam format rapi
         stats_data = [
             f"╔══════════════════════════════════════════════════════════════╗",
             f"║ \033[1;37mTarget:\033[0m {self.target:<55} ║",
@@ -224,7 +231,6 @@ class Dashboard:
             f"╚══════════════════════════════════════════════════════════════╝"
         ]
         
-        # Tampilkan statistik dengan posisi terpusat
         for line in stats_data:
             if terminal_width > len(line):
                 padding = (terminal_width - len(line)) // 2
@@ -234,7 +240,6 @@ class Dashboard:
         
         print()
         
-        # Recent logs
         log_header = "📝 RECENT REQUESTS"
         print(f"\033[96m{' ' * ((terminal_width - len(log_header)) // 2)}{log_header}\033[0m")
         print()
@@ -251,7 +256,6 @@ class Dashboard:
                 
                 log_text = f"  {color}[{log['status']}]{reset} {log['method']} | {log['latency']*1000:.0f}ms"
                 reset = "\033[0m"
-                # Buat baris dengan frame
                 log_line = f"║{log_text:<64}║"
                 
                 if terminal_width > len(log_line):
@@ -262,7 +266,6 @@ class Dashboard:
         
         print()
         
-        # Info logs
         info_header = "ℹ️  SYSTEM INFO"
         print(f"\033[96m{' ' * ((terminal_width - len(info_header)) // 2)}{info_header}\033[0m")
         print()
@@ -279,48 +282,37 @@ class Dashboard:
         print()
         footer = "Press Ctrl+C to stop"
         print(f"\033[90m{' ' * ((terminal_width - len(footer)) // 2)}{footer}\033[0m")
-        
-        # Save good proxies periodically
         self.save_good_proxies()
     
     def save_good_proxies(self):
-        """Menyimpan proxy yang bagus ke file"""
-        if int(time.time()) % 10 == 0:  # Every 10 seconds
+        if int(time.time()) % 10 == 0:
             with open('good_proxies.txt', 'w') as f:
                 for proxy in self.proxy_pool.proxies:
                     if proxy not in self.proxy_pool.failed_proxies:
                         f.write(f"{proxy}\n")
 
 async def main():
-    if len(sys.argv) < 3:
-        print("Usage: python3 proxy_analyzer.py <url> <proxy.txt>")
+    if len(sys.argv) < 2:
+        print("Usage: python3 script.py <url>")
         print(get_centered_banner())
         return
     
     target = sys.argv[1]
-    proxy_file = sys.argv[2]
     
-    # Load proxies
-    try:
-        with open(proxy_file, 'r') as f:
-            proxies = [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        print(f"File {proxy_file} not found!")
-        return
+    # Gunakan proxy dari embedded list (TIDAK PERLU FILE EKSTERNAL)
+    proxies = get_proxies()
     
     if not proxies:
-        print("No proxies loaded!")
+        print("No proxies available in script!")
         return
     
-    print(f"\033[95m✓ Loaded {len(proxies)} proxies\033[0m")
+    print(f"\033[95m✓ Loaded {len(proxies)} proxies from embedded list\033[0m")
     await asyncio.sleep(1)
     
-    # Initialize components
     proxy_pool = ProxyPool(proxies)
     dashboard = Dashboard(target, proxy_pool)
     stop_event = threading.Event()
     
-    # Start workers
     workers = []
     num_workers = min(50, len(proxies))
     
@@ -328,12 +320,10 @@ async def main():
         worker = RequestWorker(i, proxy_pool, target)
         workers.append(worker)
     
-    # Run workers asynchronously
     async def run_workers():
         tasks = [worker.run(dashboard.stats, stop_event) for worker in workers]
         await asyncio.gather(*tasks)
     
-    # Start dashboard display thread
     def display_dashboard():
         while not stop_event.is_set():
             dashboard.display()
