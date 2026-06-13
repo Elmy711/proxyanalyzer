@@ -9,24 +9,78 @@ from collections import defaultdict, deque
 import threading
 from typing import List, Dict, Optional, Tuple
 import os
+import shutil
 
-# Banner 3 huruf "CPA" warna magenta
-BANNER = """
-\033[95m
-   ╔══════════════════════════════════════════════════════════╗
-   ║                                                          ║
-   ║     ██████╗ ██████╗  █████╗                              ║
-   ║    ██╔════╝ ██╔══██╗██╔══██╗                             ║
-   ║    ██║      ██████╔╝███████║                             ║
-   ║    ██║      ██╔═══╝ ██╔══██║                             ║
-   ║    ╚██████╗ ██║     ██║  ██║                             ║
-   ║     ╚═════╝ ╚═╝     ╚═╝  ╚═╝                             ║
-   ║                                                          ║
-   ║              CYBER PROXY ANALYZER                        ║
-   ║                   v2.0 - Python                          ║
-   ╚══════════════════════════════════════════════════════════╝
-\033[0m
-"""
+# Banner 3 huruf "CPA" dengan posisi responsif di tengah
+def get_centered_banner():
+    """Menghasilkan banner CPA yang selalu terpusat di tengah layar"""
+    # Dapatkan lebar terminal saat ini
+    terminal_width = shutil.get_terminal_size().columns
+    
+    # Banner lines (tanpa padding)
+    banner_lines = [
+        "",
+        "     ██████╗ ██████╗  █████╗     ",
+        "    ██╔════╝ ██╔══██╗██╔══██╗    ",
+        "    ██║      ██████╔╝███████║    ",
+        "    ██║      ██╔═══╝ ██╔══██║    ",
+        "    ╚██████╗ ██║     ██║  ██║    ",
+        "     ╚═════╝ ╚═╝     ╚═╝  ╚═╝    ",
+        "                                  ",
+        "       CYBER PEOPLE ATTACK       ",
+        "           ELANG  TOOL v1.0       ",
+        ""
+    ]
+    
+    # Frame lines
+    frame_top = "╔══════════════════════════════════════════════════════════════╗"
+    frame_bottom = "╚══════════════════════════════════════════════════════════════╝"
+    
+    # Hitung padding untuk setiap baris agar berada di tengah
+    centered_banner = []
+    
+    # Tambahkan frame atas yang terpusat
+    if terminal_width > len(frame_top):
+        padding = (terminal_width - len(frame_top)) // 2
+        centered_banner.append(" " * padding + frame_top)
+    else:
+        centered_banner.append(frame_top)
+    
+    # Tambahkan baris kosong
+    empty_line = "║" + " " * 62 + "║"
+    if terminal_width > len(empty_line):
+        padding = (terminal_width - len(empty_line)) // 2
+        centered_banner.append(" " * padding + empty_line)
+    
+    # Tambahkan setiap baris banner dengan warna magenta
+    for line in banner_lines:
+        # Buat baris dengan frame
+        framed_line = "║" + line.ljust(62) + "║"
+        
+        # Tambahkan warna magenta
+        colored_line = f"\033[95m{framed_line}\033[0m"
+        
+        # Pusatkan di terminal
+        if terminal_width > len(framed_line):
+            padding = (terminal_width - len(framed_line)) // 2
+            centered_banner.append(" " * padding + colored_line)
+        else:
+            centered_banner.append(colored_line)
+    
+    # Tambahkan baris kosong
+    if terminal_width > len(empty_line):
+        padding = (terminal_width - len(empty_line)) // 2
+        centered_banner.append(" " * padding + empty_line)
+    
+    # Tambahkan frame bawah yang terpusat
+    if terminal_width > len(frame_bottom):
+        padding = (terminal_width - len(frame_bottom)) // 2
+        centered_banner.append(" " * padding + frame_bottom)
+    else:
+        centered_banner.append(frame_bottom)
+    
+    return "\n".join(centered_banner)
+
 # Model 1: ProxyPool dengan pengelolaan dinamis
 class ProxyPool:
     def __init__(self, proxies: List[str]):
@@ -128,7 +182,7 @@ class RequestWorker:
                 # Rate limiting
                 await asyncio.sleep(random.uniform(0.3, 0.8))
 
-# Model 3: Dashboard dengan live monitoring
+# Model 3: Dashboard dengan live monitoring responsif
 class Dashboard:
     def __init__(self, target: str, proxy_pool: ProxyPool):
         self.target = target
@@ -161,17 +215,36 @@ class Dashboard:
                 'time': datetime.now()
             })
     
+    def center_text(self, text: str, width: int) -> str:
+        """Memusatkan teks dengan padding yang tepat"""
+        if len(text) >= width:
+            return text
+        total_padding = width - len(text)
+        left_padding = total_padding // 2
+        right_padding = total_padding - left_padding
+        return " " * left_padding + text + " " * right_padding
+    
     def display(self):
-        """Menampilkan dashboard"""
+        """Menampilkan dashboard dengan posisi responsif"""
         os.system('clear' if os.name == 'posix' else 'cls')
         
-        # Tampilkan banner CPA
-        print(BANNER)
+        # Tampilkan banner CPA yang terpusat
+        print(get_centered_banner())
+        print()  # Tambahkan baris kosong
         
-        width = 60
-        print("\033[95m╔" + "═" * width + "╗\033[0m")
+        # Dapatkan lebar terminal
+        terminal_width = shutil.get_terminal_size().columns
         
-        # Statistics
+        # Lebar konten dashboard
+        dashboard_width = min(70, terminal_width - 4)
+        horizontal_line = "═" * dashboard_width
+        
+        # Header dashboard
+        header = "📊 LIVE DASHBOARD 📊"
+        print(f"\033[95m{' ' * ((terminal_width - len(header)) // 2)}{header}\033[0m")
+        print()
+        
+        # Statistics dengan posisi terpusat
         elapsed = time.time() - self.stats['start_time']
         req_per_sec = self.stats['total_requests'] / elapsed if elapsed > 0 else 0
         success_rate = (self.stats['successful_requests'] / self.stats['total_requests'] * 100 
@@ -179,17 +252,30 @@ class Dashboard:
         avg_latency = (self.stats['total_latency'] / self.stats['total_requests'] 
                       if self.stats['total_requests'] > 0 else 0)
         
-        print(f"\033[95m║\033[0m \033[1;37mTarget:\033[0m {self.target:<50} \033[95m║\033[0m")
-        print(f"\033[95m║\033[0m \033[1;37mAlive Proxies:\033[0m {self.proxy_pool.get_alive_count():<50} \033[95m║\033[0m")
-        print(f"\033[95m║\033[0m \033[1;37mTotal Requests:\033[0m {self.stats['total_requests']:<50} \033[95m║\033[0m")
-        print(f"\033[95m║\033[0m \033[1;37mReq/s:\033[0m {req_per_sec:.2f}{' ' * 44} \033[95m║\033[0m")
-        print(f"\033[95m║\033[0m \033[1;37mSuccess Rate:\033[0m {success_rate:.1f}%{' ' * 44} \033[95m║\033[0m")
-        print(f"\033[95m║\033[0m \033[1;37mAvg Latency:\033[0m {avg_latency*1000:.1f}ms{' ' * 42} \033[95m║\033[0m")
+        # Buat box statistik yang terpusat
+        stats_box = [
+            f"╔{horizontal_line}╗",
+            f"║ \033[1;37mTarget:\033[0m {self.target:<{dashboard_width-8}} ║",
+            f"║ \033[1;37mAlive Proxies:\033[0m {self.proxy_pool.get_alive_count():<{dashboard_width-18}} ║",
+            f"║ \033[1;37mTotal Requests:\033[0m {self.stats['total_requests']:<{dashboard_width-18}} ║",
+            f"║ \033[1;37mReq/s:\033[0m {req_per_sec:.2f}{' ' * (dashboard_width-12)} ║",
+            f"║ \033[1;37mSuccess Rate:\033[0m {success_rate:.1f}%{' ' * (dashboard_width-19)} ║",
+            f"║ \033[1;37mAvg Latency:\033[0m {avg_latency*1000:.1f}ms{' ' * (dashboard_width-19)} ║",
+            f"╚{horizontal_line}╝"
+        ]
         
-        print("\033[95m╠" + "═" * width + "╣\033[0m")
+        # Tampilkan statistik box dengan posisi terpusat
+        for line in stats_box:
+            padding = (terminal_width - len(line)) // 2
+            print(" " * padding + f"\033[95m{line}\033[0m")
+        
+        print()
         
         # Recent logs
-        print("\033[95m║\033[0m \033[1;37mRecent Requests:\033[0m{' ' * 42}\033[95m║\033[0m")
+        log_header = "📝 RECENT REQUESTS"
+        print(f"\033[95m{' ' * ((terminal_width - len(log_header)) // 2)}{log_header}\033[0m")
+        print()
+        
         with self.lock:
             for log in self.logs:
                 color = "\033[37m"
@@ -199,19 +285,24 @@ class Dashboard:
                     color = "\033[31m"
                 elif log['status'] == 429:
                     color = "\033[33m"
-                    
-                log_text = f"[{log['status']}] {log['method']} {self.target} ({log['latency']*1000:.0f}ms)"
-                print(f"\033[95m║\033[0m {color}{log_text:<58}\033[95m║\033[0m")
+                
+                log_text = f"[{log['status']}] {log['method']} | {log['latency']*1000:.0f}ms"
+                log_line = f"║ {color}{log_text:<{dashboard_width-4}}\033[0m ║"
+                padding = (terminal_width - len(log_line)) // 2
+                print(" " * padding + f"\033[95m{log_line}\033[0m")
         
-        print("\033[95m╠" + "═" * width + "╣\033[0m")
+        print()
         
         # Info logs
-        print("\033[95m║\033[0m \033[1;37mSystem Info:\033[0m{' ' * 48}\033[95m║\033[0m")
+        info_header = "ℹ️  SYSTEM INFO"
+        print(f"\033[95m{' ' * ((terminal_width - len(info_header)) // 2)}{info_header}\033[0m")
+        print()
+        
         with self.lock:
             for log in self.info_logs:
-                print(f"\033[95m║\033[0m \033[33m{log['message']:<58}\033[95m║\033[0m")
-        
-        print("\033[95m╚" + "═" * width + "╝\033[0m")
+                info_line = f"║ \033[33m{log['message']:<{dashboard_width-4}}\033[0m ║"
+                padding = (terminal_width - len(info_line)) // 2
+                print(" " * padding + f"\033[95m{info_line}\033[0m")
         
         # Save good proxies periodically
         self.save_good_proxies()
@@ -227,7 +318,7 @@ class Dashboard:
 async def main():
     if len(sys.argv) < 3:
         print("Usage: python3 proxy_analyzer.py <url> <proxy.txt>")
-        print(BANNER)
+        print(get_centered_banner())
         return
     
     target = sys.argv[1]
@@ -246,7 +337,7 @@ async def main():
         return
     
     print(f"\033[95m✓ Loaded {len(proxies)} proxies\033[0m")
-    time.sleep(1)
+    await asyncio.sleep(1)
     
     # Initialize components
     proxy_pool = ProxyPool(proxies)
@@ -287,4 +378,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n\033[95mGoodbye!\033[0m")
+        print("\n\033[95mALHAMDULILLAH\033[0m")
