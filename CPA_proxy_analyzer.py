@@ -27,7 +27,7 @@ def get_centered_banner():
         "     ╚═════╝ ╚═╝     ╚═╝  ╚═╝    ",
         "                                  ",
         "       CPA PROXY ANALYZER       ",
-        "           ELANG TOOLS V1.0          ",
+        "           ELANG TOOLS v1.0         ",
         ""
     ]
     
@@ -47,19 +47,115 @@ def show_usage():
     print(get_centered_banner())
     print("\n\033[1;33m" + "="*60 + "\033[0m")
     print("\033[1;36mCARA PENGGUNAAN:\033[0m")
-    print("\033[93m1. Minimal:\033[0m python3 script.py <url> <proxy.txt>")
-    print("\033[93m2. Dengan durasi (detik):\033[0m python3 script.py <url> <proxy.txt> <duration>")
-    print("\033[93m3. Dengan durasi & request:\033[0m python3 script.py <url> <proxy.txt> <duration> <max_requests>")
+    print("\033[93m1. Auto-fetch proxy:\033[0m python3 script.py <url>")
+    print("\033[93m2. Dengan file proxy:\033[0m python3 script.py <url> <proxy.txt>")
+    print("\033[93m3. Dengan durasi:\033[0m python3 script.py <url> <proxy.txt> <duration>")
+    print("\033[93m4. Dengan durasi & request:\033[0m python3 script.py <url> <proxy.txt> <duration> <max_requests>")
     print("\n\033[1;33m" + "="*60 + "\033[0m")
     print("\033[36mCONTOH:\033[0m")
-    print("  python3 script.py https://example.com proxy.txt")
-    print("  python3 script.py https://example.com proxy.txt 60")
-    print("  python3 script.py https://example.com proxy.txt 300 1000")
+    print("  python3 script.py https://example.com                 # Auto-fetch proxy")
+    print("  python3 script.py https://example.com proxy.txt       # Pakai file proxy")
+    print("  python3 script.py https://example.com proxy.txt 60    # Jalan 60 detik")
+    print("  python3 script.py https://example.com proxy.txt 60 1000 # 60 detik & 1000 request")
     print("\n\033[90mKeterangan:\033[0m")
     print("  - duration: waktu berjalan dalam detik (0 = unlimited)")
     print("  - max_requests: batas maksimal request (0 = unlimited)")
     print("  - Tekan Ctrl+C kapan saja untuk menghentikan program\033[0m")
     print("\033[1;33m" + "="*60 + "\033[0m\n")
+
+async def fetch_proxies_from_url(session: aiohttp.ClientSession, url: str) -> List[str]:
+    """Mengambil proxy dari satu URL"""
+    proxies = []
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+            if resp.status == 200:
+                text = await resp.text()
+                # Parse proxy dari text
+                for line in text.split('\n'):
+                    line = line.strip()
+                    if line and ':' in line and not line.startswith('#'):
+                        # Filter format ip:port
+                        parts = line.split(':')
+                        if len(parts) >= 2 and parts[0].replace('.', '').isdigit():
+                            proxies.append(line)
+        print(f"  \033[92m✓\033[0m {len(proxies)} proxies dari {url[:50]}...")
+    except Exception as e:
+        print(f"  \033[91m✗\033[0m Gagal fetch dari {url[:50]}...: {str(e)[:50]}")
+    return proxies
+
+async def auto_fetch_proxies() -> List[str]:
+    """Mengambil proxy dari berbagai sumber online"""
+    print("\n\033[36m📡 Mengambil proxy dari berbagai sumber...\033[0m")
+    
+    proxy_sources = [
+        # ProxyScrape - HTTP proxies
+        "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all",
+        "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/http.txt",
+        "https://raw.githubusercontent.com/ProxifyPE/Proxify/main/ProxyLists/http.txt",
+        "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+        "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
+        "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
+        "https://proxy.goladder.net/proxy/list.txt",
+        "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+        # Additional sources
+        "https://www.proxy-list.download/api/v1/get?type=http",
+        "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt",
+    ]
+    
+    all_proxies = set()
+    
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_proxies_from_url(session, url) for url in proxy_sources]
+        results = await asyncio.gather(*tasks)
+        
+        for proxies in results:
+            for proxy in proxies:
+                all_proxies.add(proxy)
+    
+    # Filter proxy dengan format yang benar
+    valid_proxies = []
+    for proxy in all_proxies:
+        if ':' in proxy and len(proxy.split(':')) == 2:
+            ip, port = proxy.split(':')
+            if ip.replace('.', '').replace(':', '').isdigit() and port.isdigit():
+                valid_proxies.append(proxy)
+    
+    print(f"\n\033[92m✓ Total proxy terambil: {len(valid_proxies)} proxy\033[0m")
+    return valid_proxies
+
+async def test_proxies_quick(proxies: List[str], test_url: str = "https://httpbin.org/ip", max_test: int = 50) -> List[str]:
+    """Test cepat proxy untuk memfilter yang hidup"""
+    print(f"\n\033[36m🔍 Testing {min(len(proxies), max_test)} proxy (memakan waktu ~30 detik)...\033[0m")
+    
+    test_proxies = proxies[:max_test]
+    working_proxies = []
+    
+    async def test_single_proxy(session: aiohttp.ClientSession, proxy: str) -> Tuple[str, bool]:
+        try:
+            start = time.time()
+            async with session.get(test_url, proxy=f"http://{proxy}", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                latency = time.time() - start
+                if resp.status == 200 and latency < 3.0:
+                    return proxy, True
+        except:
+            pass
+        return proxy, False
+    
+    async with aiohttp.ClientSession() as session:
+        tasks = [test_single_proxy(session, proxy) for proxy in test_proxies]
+        results = await asyncio.gather(*tasks)
+        
+        for proxy, is_working in results:
+            if is_working:
+                working_proxies.append(proxy)
+    
+    print(f"\033[92m✓ {len(working_proxies)} proxy aktif ditemukan\033[0m")
+    
+    if len(working_proxies) == 0:
+        print("\033[93m⚠ Tidak ada proxy aktif, menggunakan semua proxy (mungkin lambat)\033[0m")
+        return proxies[:100]
+    
+    return working_proxies
 
 # ProxyPool dengan pengelolaan dinamis
 class ProxyPool:
@@ -112,17 +208,20 @@ class RequestWorker:
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
-            ])
+            ]),
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive',
         }
         
         try:
             proxy_url = f"http://{proxy}"
             async with session.request(method, self.target, headers=headers, 
-                                      proxy=proxy_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                                      proxy=proxy_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 latency = time.time() - start_time
                 status = resp.status
                 
-                if status == 200 and latency < 1.5:
+                if status == 200 and latency < 3.0:
                     self.success_count += 1
                     self.latencies.append(latency)
                     return True, latency, status
@@ -151,15 +250,17 @@ class RequestWorker:
                     stats['successful_requests'] += 1
                 stats['total_latency'] += latency
                 
-                await asyncio.sleep(random.uniform(0.3, 0.8))
+                # Dynamic rate limiting
+                delay = random.uniform(0.3, 0.8)
+                await asyncio.sleep(delay)
 
-# Dashboard tanpa frame dengan timer
+# Dashboard dengan timer
 class Dashboard:
     def __init__(self, target: str, proxy_pool: ProxyPool, duration: int = 0, max_requests: int = 0):
         self.target = target
         self.proxy_pool = proxy_pool
-        self.duration = duration  # 0 = unlimited
-        self.max_requests = max_requests  # 0 = unlimited
+        self.duration = duration
+        self.max_requests = max_requests
         self.start_time = time.time()
         self.stats = {
             'total_requests': 0,
@@ -189,11 +290,9 @@ class Dashboard:
             })
     
     def check_stop_conditions(self, stop_event: threading.Event) -> bool:
-        """Memeriksa apakah program harus berhenti"""
         if stop_event.is_set():
             return True
             
-        # Cek durasi
         if self.duration > 0:
             elapsed = time.time() - self.start_time
             if elapsed >= self.duration:
@@ -201,7 +300,6 @@ class Dashboard:
                 stop_event.set()
                 return True
         
-        # Cek maksimal request
         if self.max_requests > 0:
             if self.stats['total_requests'] >= self.max_requests:
                 self.stop_reason = f"Mencapai batas request ({self.max_requests})"
@@ -211,16 +309,13 @@ class Dashboard:
         return False
     
     def display(self, stop_event: threading.Event):
-        """Menampilkan dashboard tanpa frame"""
         os.system('clear' if os.name == 'posix' else 'cls')
         
-        # Tampilkan banner
         print(get_centered_banner())
         print()
         
         terminal_width = shutil.get_terminal_size().columns
         
-        # Header dengan informasi durasi
         if self.duration > 0 or self.max_requests > 0:
             limits = []
             if self.duration > 0:
@@ -235,7 +330,6 @@ class Dashboard:
         print(f"\033[1;36m{' ' * ((terminal_width - len(header)) // 2)}{header}\033[0m")
         print()
         
-        # Statistics
         elapsed = time.time() - self.stats['start_time']
         req_per_sec = self.stats['total_requests'] / elapsed if elapsed > 0 else 0
         success_rate = (self.stats['successful_requests'] / self.stats['total_requests'] * 100 
@@ -243,13 +337,11 @@ class Dashboard:
         avg_latency = (self.stats['total_latency'] / self.stats['total_requests'] 
                       if self.stats['total_requests'] > 0 else 0)
         
-        # Sisa waktu jika ada durasi
         remaining_time = ""
         if self.duration > 0:
             remaining = max(0, self.duration - elapsed)
             remaining_time = f"\033[1;37m│\033[0m \033[36mSisa Waktu:\033[0m {remaining:.0f} detik"
         
-        # Sisa request jika ada batas
         remaining_requests = ""
         if self.max_requests > 0:
             remaining_req = max(0, self.max_requests - self.stats['total_requests'])
@@ -262,6 +354,7 @@ class Dashboard:
 {remaining_requests}
 \033[1;37m│\033[0m 
 \033[1;37m│\033[0m \033[36mPROXY STATUS:\033[0m
+\033[1;37m│\033[0m   ├─ \033[33mTotal Proxies:\033[0m {len(self.proxy_pool.proxies)}
 \033[1;37m│\033[0m   ├─ \033[33mAlive Proxies:\033[0m {self.proxy_pool.get_alive_count()}
 \033[1;37m│\033[0m   └─ \033[33mDead Proxies:\033[0m {len(self.proxy_pool.proxies) - self.proxy_pool.get_alive_count()}
 \033[1;37m│\033[0m 
@@ -273,7 +366,6 @@ class Dashboard:
 \033[1;37m└────────────────────────────────────────────────────────────────┘\033[0m
 """
         
-        # Pusatkan statistik
         for line in stats_text.split('\n'):
             if line.strip():
                 if terminal_width > len(line):
@@ -284,13 +376,12 @@ class Dashboard:
         
         print()
         
-        # Recent Requests section
         log_header = "📝 RECENT REQUESTS"
         print(f"\033[1;36m{' ' * ((terminal_width - len(log_header)) // 2)}{log_header}\033[0m")
         print()
         
         with self.lock:
-            for i, log in enumerate(self.logs):
+            for log in self.logs:
                 if log['status'] == 200:
                     status_color = "\033[32m"
                     status_icon = "✓"
@@ -314,7 +405,6 @@ class Dashboard:
         
         print()
         
-        # System Info section
         info_header = "ℹ️  SYSTEM INFO"
         print(f"\033[1;36m{' ' * ((terminal_width - len(info_header)) // 2)}{info_header}\033[0m")
         print()
@@ -328,7 +418,6 @@ class Dashboard:
                 else:
                     print(info_text)
         
-        # Tampilkan pesan stop jika ada
         if self.stop_reason and stop_event.is_set():
             print()
             stop_text = f"\033[91m⛔ {self.stop_reason}, program berhenti...\033[0m"
@@ -340,7 +429,6 @@ class Dashboard:
         
         print()
         
-        # Running time
         hours = int(elapsed // 3600)
         minutes = int((elapsed % 3600) // 60)
         seconds = int(elapsed % 60)
@@ -362,11 +450,9 @@ class Dashboard:
             else:
                 print(footer)
         
-        # Save good proxies
         self.save_good_proxies()
     
     def save_good_proxies(self):
-        """Menyimpan proxy yang bagus ke file"""
         if int(time.time()) % 10 == 0:
             with open('good_proxies.txt', 'w') as f:
                 f.write(f"# Proxy hasil filter - {datetime.now()}\n")
@@ -377,34 +463,60 @@ class Dashboard:
 
 async def main():
     # Parsing parameter
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 2:
         show_usage()
         return
     
     target = sys.argv[1]
-    proxy_file = sys.argv[2]
-    duration = int(sys.argv[3]) if len(sys.argv) > 3 else 0
-    max_requests = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+    duration = 0
+    max_requests = 0
     
-    # Load proxies
-    try:
-        with open(proxy_file, 'r') as f:
-            proxies = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-    except FileNotFoundError:
-        print(f"\033[91m✗ File {proxy_file} tidak ditemukan!\033[0m")
-        print("\n\033[93mBuat file proxy.txt dengan format:\033[0m")
-        print("  103.152.232.36:80")
-        print("  47.91.99.55:3128")
-        print("  183.88.104.229:8080\n")
-        return
+     # Cek apakah parameter ke-2 adalah file atau langsung durasi
+    if len(sys.argv) >= 3:
+        # Jika parameter ke-2 adalah angka, berarti auto-fetch dengan durasi
+        if sys.argv[2].isdigit():
+            duration = int(sys.argv[2])
+            max_requests = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+            proxies = await auto_fetch_proxies()
+        else:
+            # Parameter ke-2 adalah file proxy
+            proxy_file = sys.argv[2]
+            duration = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+            max_requests = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+            
+            try:
+                with open(proxy_file, 'r') as f:
+                    proxies = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+                print(f"\n\033[92m✓ Loaded {len(proxies)} proxies dari file {proxy_file}\033[0m")
+            except FileNotFoundError:
+                print(f"\033[91m✗ File {proxy_file} tidak ditemukan! Menggunakan auto-fetch...\033[0m")
+                proxies = await auto_fetch_proxies()
+    else:
+        # Auto-fetch proxy
+        proxies = await auto_fetch_proxies()
     
     if not proxies:
-        print("\033[91m✗ Tidak ada proxy yang ditemukan di file!\033[0m")
+        print("\033[91m✗ Tidak ada proxy yang tersedia!\033[0m")
         return
+    
+    # Test quick proxy (optional, comment jika ingin skip)
+    if len(proxies) > 20:
+        test_choice = input(f"\n\033[36m🔍 Test {min(len(proxies), 50)} proxy terlebih dahulu? (y/n): \033[0m").lower()
+        if test_choice == 'y':
+            proxies = await test_proxies_quick(proxies)
+            if not proxies:
+                print("\033[91m✗ Tidak ada proxy aktif! Menggunakan semua proxy...\033[0m")
+                proxies = await auto_fetch_proxies()
+                proxies = proxies[:100]
+    
+    # Batasi jumlah proxy untuk performa
+    if len(proxies) > 200:
+        proxies = proxies[:200]
+        print(f"\033[93m⚠ Membatasi ke 200 proxy terbaik untuk performa\033[0m")
     
     # Tampilkan konfigurasi
     print(get_centered_banner())
-    print(f"\n\033[92m✓ Loaded {len(proxies)} proxies\033[0m")
+    print(f"\n\033[92m✓ Total proxy siap pakai: {len(proxies)}\033[0m")
     print(f"\033[36m✓ Target:\033[0m {target}")
     if duration > 0:
         print(f"\033[36m✓ Durasi:\033[0m {duration} detik")
@@ -414,6 +526,7 @@ async def main():
         print(f"\033[36m✓ Maks Request:\033[0m {max_requests}")
     else:
         print(f"\033[36m✓ Maks Request:\033[0m Unlimited")
+    
     print(f"\n\033[33mMemulai dalam 3 detik...\033[0m")
     await asyncio.sleep(3)
     
@@ -430,23 +543,17 @@ async def main():
         worker = RequestWorker(i, proxy_pool, target)
         workers.append(worker)
     
-    # Run workers asynchronously
     async def run_workers():
         tasks = [worker.run(dashboard.stats, stop_event) for worker in workers]
         await asyncio.gather(*tasks)
     
-    # Start dashboard display thread
     def display_dashboard():
         while not stop_event.is_set():
             dashboard.display(stop_event)
-            
-            # Cek kondisi stop
             if dashboard.check_stop_conditions(stop_event):
                 break
-                
             time.sleep(0.5)
         
-        # Tampilkan ringkasan akhir
         if dashboard.stop_reason:
             time.sleep(1)
             dashboard.display(stop_event)
@@ -463,7 +570,6 @@ async def main():
         display_thread.join(timeout=2)
         print("\033[92m✓ Program dihentikan oleh user\033[0m")
     finally:
-        # Tampilkan ringkasan akhir
         elapsed = time.time() - dashboard.start_time
         success_rate = (dashboard.stats['successful_requests'] / dashboard.stats['total_requests'] * 100 
                        if dashboard.stats['total_requests'] > 0 else 0)
@@ -484,4 +590,5 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n\033[95mALHAMDULILLAH\033[0m")
+        print("\n\033[95mGoodbye!\033[0m")
+```
