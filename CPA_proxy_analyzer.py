@@ -10,6 +10,7 @@ import threading
 from typing import List, Dict, Optional, Tuple
 import os
 import shutil
+import signal
 
 # Banner 3 huruf "CPA" tanpa frame
 def get_centered_banner():
@@ -40,6 +41,25 @@ def get_centered_banner():
         centered_banner.append(centered_line)
     
     return "\n".join(centered_banner)
+
+def show_usage():
+    """Menampilkan cara penggunaan script"""
+    print(get_centered_banner())
+    print("\n\033[1;33m" + "="*60 + "\033[0m")
+    print("\033[1;36mCARA PENGGUNAAN:\033[0m")
+    print("\033[93m1. Minimal:\033[0m python3 script.py <url> <proxy.txt>")
+    print("\033[93m2. Dengan durasi (detik):\033[0m python3 script.py <url> <proxy.txt> <duration>")
+    print("\033[93m3. Dengan durasi & request:\033[0m python3 script.py <url> <proxy.txt> <duration> <max_requests>")
+    print("\n\033[1;33m" + "="*60 + "\033[0m")
+    print("\033[36mCONTOH:\033[0m")
+    print("  python3 script.py https://example.com proxy.txt")
+    print("  python3 script.py https://example.com proxy.txt 60")
+    print("  python3 script.py https://example.com proxy.txt 300 1000")
+    print("\n\033[90mKeterangan:\033[0m")
+    print("  - duration: waktu berjalan dalam detik (0 = unlimited)")
+    print("  - max_requests: batas maksimal request (0 = unlimited)")
+    print("  - Tekan Ctrl+C kapan saja untuk menghentikan program\033[0m")
+    print("\033[1;33m" + "="*60 + "\033[0m\n")
 
 # ProxyPool dengan pengelolaan dinamis
 class ProxyPool:
@@ -133,20 +153,24 @@ class RequestWorker:
                 
                 await asyncio.sleep(random.uniform(0.3, 0.8))
 
-# Dashboard tanpa frame
+# Dashboard tanpa frame dengan timer
 class Dashboard:
-    def __init__(self, target: str, proxy_pool: ProxyPool):
+    def __init__(self, target: str, proxy_pool: ProxyPool, duration: int = 0, max_requests: int = 0):
         self.target = target
         self.proxy_pool = proxy_pool
+        self.duration = duration  # 0 = unlimited
+        self.max_requests = max_requests  # 0 = unlimited
+        self.start_time = time.time()
         self.stats = {
             'total_requests': 0,
             'successful_requests': 0,
             'total_latency': 0,
-            'start_time': time.time()
+            'start_time': self.start_time
         }
         self.logs = deque(maxlen=10)
         self.info_logs = deque(maxlen=5)
         self.lock = threading.Lock()
+        self.stop_reason = None
         
     def add_log(self, status: int, method: str, latency: float):
         with self.lock:
@@ -164,7 +188,29 @@ class Dashboard:
                 'time': datetime.now()
             })
     
-    def display(self):
+    def check_stop_conditions(self, stop_event: threading.Event) -> bool:
+        """Memeriksa apakah program harus berhenti"""
+        if stop_event.is_set():
+            return True
+            
+        # Cek durasi
+        if self.duration > 0:
+            elapsed = time.time() - self.start_time
+            if elapsed >= self.duration:
+                self.stop_reason = f"Waktu habis ({self.duration} detik)"
+                stop_event.set()
+                return True
+        
+        # Cek maksimal request
+        if self.max_requests > 0:
+            if self.stats['total_requests'] >= self.max_requests:
+                self.stop_reason = f"Mencapai batas request ({self.max_requests})"
+                stop_event.set()
+                return True
+        
+        return False
+    
+    def display(self, stop_event: threading.Event):
         """Menampilkan dashboard tanpa frame"""
         os.system('clear' if os.name == 'posix' else 'cls')
         
@@ -174,12 +220,22 @@ class Dashboard:
         
         terminal_width = shutil.get_terminal_size().columns
         
-        # Header
+        # Header dengan informasi durasi
+        if self.duration > 0 or self.max_requests > 0:
+            limits = []
+            if self.duration > 0:
+                limits.append(f"⏱ Time Limit: {self.duration}s")
+            if self.max_requests > 0:
+                limits.append(f"📊 Request Limit: {self.max_requests}")
+            limit_text = " | ".join(limits)
+            print(f"\033[90m{' ' * ((terminal_width - len(limit_text)) // 2)}{limit_text}\033[0m")
+            print()
+        
         header = "📊 LIVE DASHBOARD 📊"
         print(f"\033[1;36m{' ' * ((terminal_width - len(header)) // 2)}{header}\033[0m")
         print()
         
-        # Statistics - tanpa frame
+        # Statistics
         elapsed = time.time() - self.stats['start_time']
         req_per_sec = self.stats['total_requests'] / elapsed if elapsed > 0 else 0
         success_rate = (self.stats['successful_requests'] / self.stats['total_requests'] * 100 
@@ -187,10 +243,23 @@ class Dashboard:
         avg_latency = (self.stats['total_latency'] / self.stats['total_requests'] 
                       if self.stats['total_requests'] > 0 else 0)
         
-        # Format statistik dengan rapi
+        # Sisa waktu jika ada durasi
+        remaining_time = ""
+        if self.duration > 0:
+            remaining = max(0, self.duration - elapsed)
+            remaining_time = f"\033[1;37m│\033[0m \033[36mSisa Waktu:\033[0m {remaining:.0f} detik"
+        
+        # Sisa request jika ada batas
+        remaining_requests = ""
+        if self.max_requests > 0:
+            remaining_req = max(0, self.max_requests - self.stats['total_requests'])
+            remaining_requests = f"\033[1;37m│\033[0m \033[36mSisa Request:\033[0m {remaining_req}"
+        
         stats_text = f"""
 \033[1;37m┌────────────────────────────────────────────────────────────────┐\033[0m
 \033[1;37m│\033[0m \033[36mTARGET:\033[0m {self.target}
+{remaining_time}
+{remaining_requests}
 \033[1;37m│\033[0m 
 \033[1;37m│\033[0m \033[36mPROXY STATUS:\033[0m
 \033[1;37m│\033[0m   ├─ \033[33mAlive Proxies:\033[0m {self.proxy_pool.get_alive_count()}
@@ -222,18 +291,17 @@ class Dashboard:
         
         with self.lock:
             for i, log in enumerate(self.logs):
-                # Warna berdasarkan status
                 if log['status'] == 200:
-                    status_color = "\033[32m"  # Hijau
+                    status_color = "\033[32m"
                     status_icon = "✓"
                 elif log['status'] == 403:
-                    status_color = "\033[31m"  # Merah
+                    status_color = "\033[31m"
                     status_icon = "✗"
                 elif log['status'] == 429:
-                    status_color = "\033[33m"  # Kuning
+                    status_color = "\033[33m"
                     status_icon = "⚠"
                 else:
-                    status_color = "\033[37m"  # Abu-abu
+                    status_color = "\033[37m"
                     status_icon = "•"
                 
                 log_text = f"{status_color}{status_icon}\033[0m [{log['status']}] \033[36m{log['method']}\033[0m | \033[33m{log['latency']*1000:.0f}ms\033[0m"
@@ -260,13 +328,22 @@ class Dashboard:
                 else:
                     print(info_text)
         
+        # Tampilkan pesan stop jika ada
+        if self.stop_reason and stop_event.is_set():
+            print()
+            stop_text = f"\033[91m⛔ {self.stop_reason}, program berhenti...\033[0m"
+            if terminal_width > len(stop_text):
+                padding = (terminal_width - len(stop_text)) // 2
+                print(" " * padding + stop_text)
+            else:
+                print(stop_text)
+        
         print()
         
         # Running time
-        running_time = time.time() - self.stats['start_time']
-        hours = int(running_time // 3600)
-        minutes = int((running_time % 3600) // 60)
-        seconds = int(running_time % 60)
+        hours = int(elapsed // 3600)
+        minutes = int((elapsed % 3600) // 60)
+        seconds = int(elapsed % 60)
         
         time_text = f"\033[90m⏱ Running: {hours:02d}:{minutes:02d}:{seconds:02d}\033[0m"
         if terminal_width > len(time_text):
@@ -277,12 +354,13 @@ class Dashboard:
         
         print()
         
-        footer = "Press \033[91mCtrl+C\033[0m to stop"
-        if terminal_width > len(footer):
-            padding = (terminal_width - len(footer)) // 2
-            print(" " * padding + footer)
-        else:
-            print(footer)
+        if not self.stop_reason:
+            footer = "Press \033[91mCtrl+C\033[0m to stop"
+            if terminal_width > len(footer):
+                padding = (terminal_width - len(footer)) // 2
+                print(" " * padding + footer)
+            else:
+                print(footer)
         
         # Save good proxies
         self.save_good_proxies()
@@ -291,40 +369,57 @@ class Dashboard:
         """Menyimpan proxy yang bagus ke file"""
         if int(time.time()) % 10 == 0:
             with open('good_proxies.txt', 'w') as f:
+                f.write(f"# Proxy hasil filter - {datetime.now()}\n")
+                f.write(f"# Total: {self.proxy_pool.get_alive_count()} proxies alive\n\n")
                 for proxy in self.proxy_pool.proxies:
                     if proxy not in self.proxy_pool.failed_proxies:
                         f.write(f"{proxy}\n")
 
 async def main():
+    # Parsing parameter
     if len(sys.argv) < 3:
-        print("Usage: python3 script.py <url> <proxy.txt>")
-        print(get_centered_banner())
+        show_usage()
         return
     
     target = sys.argv[1]
     proxy_file = sys.argv[2]
+    duration = int(sys.argv[3]) if len(sys.argv) > 3 else 0
+    max_requests = int(sys.argv[4]) if len(sys.argv) > 4 else 0
     
-    # Load proxies dari file
+    # Load proxies
     try:
         with open(proxy_file, 'r') as f:
-            proxies = [line.strip() for line in f if line.strip()]
+            proxies = [line.strip() for line in f if line.strip() and not line.startswith('#')]
     except FileNotFoundError:
-        print(f"File {proxy_file} not found!")
-        print("\nContoh format proxy.txt:")
-        print("103.152.232.36:80")
-        print("47.91.99.55:3128")
+        print(f"\033[91m✗ File {proxy_file} tidak ditemukan!\033[0m")
+        print("\n\033[93mBuat file proxy.txt dengan format:\033[0m")
+        print("  103.152.232.36:80")
+        print("  47.91.99.55:3128")
+        print("  183.88.104.229:8080\n")
         return
     
     if not proxies:
-        print("No proxies loaded!")
+        print("\033[91m✗ Tidak ada proxy yang ditemukan di file!\033[0m")
         return
     
-    print(f"\033[95m✓ Loaded {len(proxies)} proxies\033[0m")
-    await asyncio.sleep(1)
+    # Tampilkan konfigurasi
+    print(get_centered_banner())
+    print(f"\n\033[92m✓ Loaded {len(proxies)} proxies\033[0m")
+    print(f"\033[36m✓ Target:\033[0m {target}")
+    if duration > 0:
+        print(f"\033[36m✓ Durasi:\033[0m {duration} detik")
+    else:
+        print(f"\033[36m✓ Durasi:\033[0m Unlimited (sampai Ctrl+C)")
+    if max_requests > 0:
+        print(f"\033[36m✓ Maks Request:\033[0m {max_requests}")
+    else:
+        print(f"\033[36m✓ Maks Request:\033[0m Unlimited")
+    print(f"\n\033[33mMemulai dalam 3 detik...\033[0m")
+    await asyncio.sleep(3)
     
     # Initialize components
     proxy_pool = ProxyPool(proxies)
-    dashboard = Dashboard(target, proxy_pool)
+    dashboard = Dashboard(target, proxy_pool, duration, max_requests)
     stop_event = threading.Event()
     
     # Start workers
@@ -343,8 +438,19 @@ async def main():
     # Start dashboard display thread
     def display_dashboard():
         while not stop_event.is_set():
-            dashboard.display()
+            dashboard.display(stop_event)
+            
+            # Cek kondisi stop
+            if dashboard.check_stop_conditions(stop_event):
+                break
+                
             time.sleep(0.5)
+        
+        # Tampilkan ringkasan akhir
+        if dashboard.stop_reason:
+            time.sleep(1)
+            dashboard.display(stop_event)
+            print(f"\n\033[92m✓ {dashboard.stop_reason}\033[0m")
     
     display_thread = threading.Thread(target=display_dashboard)
     display_thread.start()
@@ -352,10 +458,27 @@ async def main():
     try:
         await run_workers()
     except KeyboardInterrupt:
-        print("\n\033[95mShutting down...\033[0m")
+        print("\n\033[93m⚠ Menerima interrupt signal...\033[0m")
         stop_event.set()
-        display_thread.join()
-        print("\033[95m✓ Proxy analyzer stopped\033[0m")
+        display_thread.join(timeout=2)
+        print("\033[92m✓ Program dihentikan oleh user\033[0m")
+    finally:
+        # Tampilkan ringkasan akhir
+        elapsed = time.time() - dashboard.start_time
+        success_rate = (dashboard.stats['successful_requests'] / dashboard.stats['total_requests'] * 100 
+                       if dashboard.stats['total_requests'] > 0 else 0)
+        
+        print("\n\033[1;33m" + "="*60 + "\033[0m")
+        print("\033[1;36m📊 RINGKASAN AKHIR:\033[0m")
+        print(f"  ⏱ Total Waktu: {elapsed:.2f} detik")
+        print(f"  📊 Total Request: {dashboard.stats['total_requests']}")
+        print(f"  ✓ Success: {dashboard.stats['successful_requests']}")
+        print(f"  ✗ Failed: {dashboard.stats['total_requests'] - dashboard.stats['successful_requests']}")
+        print(f"  📈 Success Rate: {success_rate:.1f}%")
+        print(f"  🌐 Proxy Alive: {proxy_pool.get_alive_count()}/{len(proxies)}")
+        print(f"  💾 Good proxies saved to: good_proxies.txt")
+        print("\033[1;33m" + "="*60 + "\033[0m")
+        print("\n\033[95mGoodbye!\033[0m")
 
 if __name__ == "__main__":
     try:
