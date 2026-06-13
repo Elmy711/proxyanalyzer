@@ -591,4 +591,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n\033[95mGoodbye!\033[0m")
-```
